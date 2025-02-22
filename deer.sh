@@ -54,8 +54,10 @@ system_info() {
     echo "操作系统: $OS $VERSION"
     echo "内核版本: $(uname -r)"
     echo "CPU信息: $(grep 'model name' /proc/cpuinfo | head -n1 | cut -d':' -f2)"
+    echo "CPU核心数: $(grep -c ^processor /proc/cpuinfo)"
     echo "内存使用: $(free -h | awk '/^Mem:/ {print $3 "/" $2}')"
     echo "磁盘使用: $(df -h / | awk 'NR==2 {print $3 "/" $2}')"
+    echo "已安装软件包数量: $(dpkg -l | grep '^ii' | wc -l 2>/dev/null || rpm -qa | wc -l 2>/dev/null || pacman -Q | wc -l 2>/dev/null || apk info | wc -l 2>/dev/null)"
 }
 
 # 系统更新
