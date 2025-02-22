@@ -26,24 +26,27 @@ else
 fi
 
 # 获取包管理器
-case $OS in
-    "ubuntu"|"debian"|"kali")
-        PKG_MANAGER="apt"
-        ;;
-    "centos"|"rhel"|"fedora"|"alma"|"rocky")
-        PKG_MANAGER="yum"
-        ;;
-    "alpine")
-        PKG_MANAGER="apk"
-        ;;
-    "arch")
-        PKG_MANAGER="pacman"
-        ;;
-    *)
-        echo "不支持的系统类型"
-        exit 1
-        ;;
-esac
+get_pkg_manager() {
+    case $OS in
+        "ubuntu"|"debian"|"kali")
+            PKG_MANAGER="apt"
+            ;;
+        "centos"|"rhel"|"fedora"|"alma"|"rocky")
+            PKG_MANAGER="yum"
+            ;;
+        "alpine")
+            PKG_MANAGER="apk"
+            ;;
+        "arch")
+            PKG_MANAGER="pacman"
+            ;;
+        *)
+            echo "不支持的系统类型"
+            exit 1
+            ;;
+    esac
+}
+get_pkg_manager
 
 # 系统信息
 system_info() {
@@ -60,16 +63,16 @@ system_update() {
     echo -e "\n${YELLOW}正在更新系统...${NC}"
     case $PKG_MANAGER in
         "apt")
-            apt update && apt upgrade -y
+            apt update && apt upgrade -y || echo -e "${RED}更新失败${NC}"
             ;;
         "yum")
-            yum update -y
+            yum update -y || echo -e "${RED}更新失败${NC}"
             ;;
         "apk")
-            apk update && apk upgrade
+            apk update && apk upgrade || echo -e "${RED}更新失败${NC}"
             ;;
         "pacman")
-            pacman -Syu --noconfirm
+            pacman -Syu --noconfirm || echo -e "${RED}更新失败${NC}"
             ;;
     esac
 }
@@ -79,16 +82,16 @@ system_clean() {
     echo -e "\n${YELLOW}正在清理系统...${NC}"
     case $PKG_MANAGER in
         "apt")
-            apt autoremove -y && apt clean
+            apt autoremove -y && apt clean || echo -e "${RED}清理失败${NC}"
             ;;
         "yum")
-            yum clean all
+            yum clean all || echo -e "${RED}清理失败${NC}"
             ;;
         "apk")
-            apk cache clean
+            apk cache clean || echo -e "${RED}清理失败${NC}"
             ;;
         "pacman")
-            pacman -Sc --noconfirm
+            pacman -Sc --noconfirm || echo -e "${RED}清理失败${NC}"
             ;;
     esac
 }
@@ -100,16 +103,16 @@ install_tools() {
     
     case $PKG_MANAGER in
         "apt")
-            apt install -y $TOOLS
+            apt install -y $TOOLS || echo -e "${RED}安装失败${NC}"
             ;;
         "yum")
-            yum install -y $TOOLS
+            yum install -y $TOOLS || echo -e "${RED}安装失败${NC}"
             ;;
         "apk")
-            apk add $TOOLS
+            apk add $TOOLS || echo -e "${RED}安装失败${NC}"
             ;;
         "pacman")
-            pacman -S --noconfirm $TOOLS
+            pacman -S --noconfirm $TOOLS || echo -e "${RED}安装失败${NC}"
             ;;
     esac
 }
@@ -124,42 +127,28 @@ change_mirrors() {
     
     read -p "请选择 [0-3]: " mirror_choice
     
+    change_mirror() {
+        local mirror_url=$1
+        local backup_file=$2
+        local source_file=$3
+        
+        cp $source_file $backup_file
+        sed -i "s|$4|$mirror_url|g" $source_file
+    }
+    
     case $OS in
         "ubuntu"|"debian")
             backup_file="/etc/apt/sources.list.bak"
             source_file="/etc/apt/sources.list"
-            # 备份原文件
-            cp $source_file $backup_file
             
             case $mirror_choice in
-                1) # 阿里云
-                    if [ "$OS" = "ubuntu" ]; then
-                        sed -i 's/archive.ubuntu.com/mirrors.aliyun.com/g' $source_file
-                        sed -i 's/security.ubuntu.com/mirrors.aliyun.com/g' $source_file
-                    else
-                        sed -i 's/deb.debian.org/mirrors.aliyun.com/g' $source_file
-                    fi
-                    ;;
-                2) # 清华源
-                    if [ "$OS" = "ubuntu" ]; then
-                        sed -i 's/archive.ubuntu.com/mirrors.tuna.tsinghua.edu.cn/g' $source_file
-                        sed -i 's/security.ubuntu.com/mirrors.tuna.tsinghua.edu.cn/g' $source_file
-                    else
-                        sed -i 's/deb.debian.org/mirrors.tuna.tsinghua.edu.cn/g' $source_file
-                    fi
-                    ;;
-                3) # 中科大
-                    if [ "$OS" = "ubuntu" ]; then
-                        sed -i 's/archive.ubuntu.com/mirrors.ustc.edu.cn/g' $source_file
-                        sed -i 's/security.ubuntu.com/mirrors.ustc.edu.cn/g' $source_file
-                    else
-                        sed -i 's/deb.debian.org/mirrors.ustc.edu.cn/g' $source_file
-                    fi
-                    ;;
+                1) change_mirror "mirrors.aliyun.com" $backup_file $source_file "archive.ubuntu.com\|security.ubuntu.com\|deb.debian.org" ;;
+                2) change_mirror "mirrors.tuna.tsinghua.edu.cn" $backup_file $source_file "archive.ubuntu.com\|security.ubuntu.com\|deb.debian.org" ;;
+                3) change_mirror "mirrors.ustc.edu.cn" $backup_file $source_file "archive.ubuntu.com\|security.ubuntu.com\|deb.debian.org" ;;
                 0) return ;;
                 *) echo "无效选项"; return ;;
             esac
-            apt update
+            apt update || echo -e "${RED}更新失败${NC}"
             ;;
             
         "centos"|"rhel"|"fedora"|"alma"|"rocky")
@@ -168,37 +157,26 @@ change_mirrors() {
             cp /etc/yum.repos.d/*.repo $backup_dir/
             
             case $mirror_choice in
-                1) # 阿里云
-                    curl -o /etc/yum.repos.d/CentOS-Base.repo https://mirrors.aliyun.com/repo/Centos-$(rpm -E %{rhel}).repo
-                    ;;
-                2) # 清华源
-                    curl -o /etc/yum.repos.d/CentOS-Base.repo https://mirrors.tuna.tsinghua.edu.cn/repo/centos/$(rpm -E %{rhel})/os/x86_64/
-                    ;;
-                3) # 中科大
-                    curl -o /etc/yum.repos.d/CentOS-Base.repo https://mirrors.ustc.edu.cn/centos/$(rpm -E %{rhel})/os/x86_64/
-                    ;;
+                1) curl -o /etc/yum.repos.d/CentOS-Base.repo https://mirrors.aliyun.com/repo/Centos-$(rpm -E %{rhel}).repo ;;
+                2) curl -o /etc/yum.repos.d/CentOS-Base.repo https://mirrors.tuna.tsinghua.edu.cn/repo/centos/$(rpm -E %{rhel})/os/x86_64/ ;;
+                3) curl -o /etc/yum.repos.d/CentOS-Base.repo https://mirrors.ustc.edu.cn/centos/$(rpm -E %{rhel})/os/x86_64/ ;;
                 0) return ;;
                 *) echo "无效选项"; return ;;
             esac
-            yum clean all && yum makecache
+            yum clean all && yum makecache || echo -e "${RED}更新失败${NC}"
             ;;
             
         "alpine")
             cp /etc/apk/repositories /etc/apk/repositories.bak
+            
             case $mirror_choice in
-                1) # 阿里云
-                    sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories
-                    ;;
-                2) # 清华源
-                    sed -i 's/dl-cdn.alpinelinux.org/mirrors.tuna.tsinghua.edu.cn/g' /etc/apk/repositories
-                    ;;
-                3) # 中科大
-                    sed -i 's/dl-cdn.alpinelinux.org/mirrors.ustc.edu.cn/g' /etc/apk/repositories
-                    ;;
+                1) change_mirror "mirrors.aliyun.com" "/etc/apk/repositories.bak" "/etc/apk/repositories" "dl-cdn.alpinelinux.org" ;;
+                2) change_mirror "mirrors.tuna.tsinghua.edu.cn" "/etc/apk/repositories.bak" "/etc/apk/repositories" "dl-cdn.alpinelinux.org" ;;
+                3) change_mirror "mirrors.ustc.edu.cn" "/etc/apk/repositories.bak" "/etc/apk/repositories" "dl-cdn.alpinelinux.org" ;;
                 0) return ;;
                 *) echo "无效选项"; return ;;
             esac
-            apk update
+            apk update || echo -e "${RED}更新失败${NC}"
             ;;
     esac
     echo -e "${GREEN}软件源更换完成!${NC}"
@@ -208,25 +186,42 @@ change_mirrors() {
 docker_manage() {
     clear
     echo -e "${GREEN}==== Docker 管理 ====${NC}"
-    echo "1. 安装 Docker"
+    echo "1. 安装 Docker 和 Docker Compose"
     echo "2. 卸载 Docker"
     echo "3. 启动 Docker"
     echo "4. 停止 Docker"
     echo "5. 重启 Docker"
-    echo "6. 查看 Docker 状态"
-    echo "7. 安装 Docker Compose"
+    echo "6. 查看 Docker 容器状态"
     echo "0. 返回主菜单"
     echo
     
-    read -p "请选择操作 [0-7]: " docker_choice
+    read -p "请选择操作 [0-6]: " docker_choice
     
     case $docker_choice in
         1)
             echo -e "\n${YELLOW}正在安装 Docker...${NC}"
-            curl -fsSL https://get.docker.com | bash -s docker --mirror Aliyun
+            
+            # 判断是否为国内网络
+            read -p "是否使用国内 Docker 源? [y/n]: " use_china_source
+            if [ "$use_china_source" == "y" ]; then
+                echo -e "\n${YELLOW}使用国内 Docker 源...${NC}"
+                curl -fsSL https://get.docker.com | bash -s docker --mirror Aliyun
+            else
+                echo -e "\n${YELLOW}使用默认 Docker 源...${NC}"
+                curl -fsSL https://get.docker.com | bash
+            fi
+            
             systemctl start docker
             systemctl enable docker
             echo -e "${GREEN}Docker 安装完成！${NC}"
+            
+            read -p "是否安装 Docker Compose? [y/n]: " install_compose
+            if [ "$install_compose" == "y" ]; then
+                echo -e "\n${YELLOW}正在安装 Docker Compose...${NC}"
+                curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+                chmod +x /usr/local/bin/docker-compose
+                echo -e "${GREEN}Docker Compose 安装完成！${NC}"
+            fi
             ;;
         2)
             echo -e "\n${YELLOW}正在卸载 Docker...${NC}"
@@ -257,13 +252,8 @@ docker_manage() {
             echo -e "${GREEN}Docker 已重启！${NC}"
             ;;
         6)
-            systemctl status docker
-            ;;
-        7)
-            echo -e "\n${YELLOW}正在安装 Docker Compose...${NC}"
-            curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
-            chmod +x /usr/local/bin/docker-compose
-            echo -e "${GREEN}Docker Compose 安装完成！${NC}"
+            echo -e "\n${YELLOW}Docker 容器状态:${NC}"
+            docker ps -a
             ;;
         0)
             return
